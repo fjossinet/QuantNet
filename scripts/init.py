@@ -164,7 +164,7 @@ def reconstruct_ontology(obo_file, domain = 'biological_process'):
     h.close()
 
 if __name__ == '__main__':
-    csv_file = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))+'/website/static/data/CTIP2_2.csv'
+    csv_file = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))+'/website/static/data/sample.csv'
     get_protein_details(csv_file)
     reconstruct_ontologies()
     reconstruct_interaction_network(csv_file)

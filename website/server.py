@@ -176,9 +176,11 @@ class WebSocket(tornado.websocket.WebSocketHandler):
             core = set(core)
             sub_network = interaction_network.subgraph(core)
             for core_id in sub_network.nodes():
-                sub_network.node[core_id]['core'] = True
+                sub_network.node[core_id]['core'] = False
                 sub_network.node[core_id]['selection'] = False
                 sub_network.node[core_id]['selected'] = False
+            for core_id in core_ids:
+                sub_network.node[core_id]['core'] = True
             for protein_id_selected in message['protein_ids_selected']:
                 try:
                     sub_network.node[protein_id_selected]['selected'] = True

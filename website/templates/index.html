@@ -213,7 +213,7 @@
                       .append("g")
                       .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
 
-                  d3.csv("{{  static_url('data/CTIP2_2.csv') }}", function(error, genes) {
+                  d3.csv("{{  static_url('data/sample.csv') }}", function(error, genes) {
                     // Extract the list of dimensions and create a scale for each.
                     x.domain(dimensions = d3.keys(genes[0]).filter(function(d) {
                       return d != "ID" && (y[d] = d3.scale.linear()

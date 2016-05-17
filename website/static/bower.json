@@ -1,0 +1,17 @@
+{
+  "name": "CTIP2_DB",
+  "version": "0.0.0",
+  "homepage": "",
+  "description": "Collaboration project with the group of O. Rohr",
+  "authors": [
+    "Fabrice Jossinet"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "bootstrap": ">=3.3.6",
+    "font-awesome": ">=4.5.0",
+    "d3": ">=3.5.9",
+    "datatables.net": "^1.10.11",
+    "datatables.net-dt": "^1.10.11"
+  }
+}

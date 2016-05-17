@@ -1,0 +1,751 @@
+<!DOCTYPE html>
+<head>
+  <meta charset="utf-8">
+  <style>
+
+    svg {
+      font: 10px sans-serif;
+    }
+
+    .node {
+        stroke: #fff;
+        stroke-width: 1.5px;
+    }
+
+    .link {
+        stroke: #999;
+        stroke-opacity: 1.5;
+    }
+
+    .background path {
+      fill: none;
+      stroke: #ddd;
+      shape-rendering: crispEdges;
+      stroke-width: 1.5px;
+    }
+
+    .foreground path {
+      fill: none;
+      stroke: steelblue;
+      stroke-width: 1.5px;
+    }
+
+    .highlighted path {
+      fill: none;
+      stroke: red;
+      stroke-width: 1.5px;
+    }
+
+    .brush .extent {
+      fill-opacity: .3;
+      stroke: #fff;
+      shape-rendering: crispEdges;
+    }
+
+    .axis line,
+    .axis path {
+      fill: none;
+      stroke: #000;
+      shape-rendering: crispEdges;
+      stroke-width: 1.5px;
+    }
+
+    .axis text {
+      text-shadow: 0 1px 0 #fff, 1px 0 0 #fff, 0 -1px 0 #fff, -1px 0 0 #fff;
+      cursor: move;
+    }
+
+  </style>
+  <link href="{{  static_url('bower_components/bootstrap/dist/css/bootstrap.min.css') }}" rel="stylesheet">
+  <link href="{{  static_url('bower_components/datatables.net-dt/css/jquery.dataTables.min.css') }}" rel="stylesheet" >
+</head>
+<body>
+  <div class="jumbotron" style="padding:10px; margin:0px;">
+    <h1><font color='#33a02c'>QuantNet</font></h1>
+    <p style="margin-left:10px;">From <span style="color:#33a02c;font-weight:500">Quant</span>itative values to <span style="color:#33a02c;font-weight:500">Net</span>works</p>
+  </div>
+  <nav class="navbar navbar-default" style="padding-left:10px;">
+          <p class="navbar-text" style="font-size:1.3em;">Ontology</p>
+          <button type="button" class="btn btn-round btn-warning navbar-btn" id="selectFunction">Molecular Function</button>
+          <button type="button" class="btn btn-round btn-success navbar-btn" id="selectProcess">Biological Process</button>
+          <button type="button" class="btn btn-round btn-success navbar-btn" id="selectComponent">Cellular Component</button>
+          <button type="button" class="btn btn-default navbar-btn" id="construct-networks-with-core-interactions">
+            <span class="glyphicon glyphicon-repeat" aria-hidden="true"></span>
+          </button>
+          <!--<button type="button" class="btn btn-default navbar-btn" id="construct-networks-with-full-interactions">
+            <span class="glyphicon glyphicon-repeat" aria-hidden="true"></span>
+          </button>-->
+  </nav>
+  <div class="container-fluid">
+    <div class="row text-center">
+      <div id="parallel" class="col-lg-12">
+      </div>
+    </div>
+    <div class="row text-center">
+      <!--<div id="ontology" class="col-lg-6">
+      </div>-->
+      <div id="interactions-left" class="col-lg-6">
+      </div>
+      <div id="interactions-right" class="col-lg-6">
+      </div>
+    </div>
+    <div class="row text-center" style="margin-top:10px;">
+      <div class="col-lg-12" style="padding:10px;">
+        <table id="table" class="cell-border" cellspacing="0" width="100%">
+          <thead>
+              <tr>
+                  <th>Id</th>
+                  <th>Name</th>
+              </tr>
+          </thead>
+          <tbody>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  <script src="{{  static_url('bower_components/jquery/dist/jquery.js') }}"></script>
+  <script src="{{  static_url('bower_components/d3/d3.min.js') }}"></script>
+  <script src="{{  static_url('bower_components/bootstrap/dist/js/bootstrap.min.js') }}"></script>
+  <script src="{{  static_url('bower_components/datatables.net/js/jquery.dataTables.min.js') }}"></script>
+  <script>
+
+        var network_type = "molecular_function";
+        var current_interactions_network = undefined;
+        var protein_ids_selected = [];
+        var table = undefined;
+        var foreground = undefined; //for the parallel coordinates widget
+        var background = undefined; //for the parallel coordinates widget
+        var highlighted = undefined; //for the parallel coordinates widget
+        var aspect = 300 / 950;
+
+        if ("WebSocket" in window) {
+              console.log("WebSocket is supported by your Browser!");
+              var ws = new WebSocket("ws://localhost:8080/websocket");
+
+              var waitForSocketConnection = function (socket, callback){
+                    setTimeout(
+                        function(){
+                            if (socket.readyState === 1) {
+                                if(callback !== undefined){
+                                    callback();
+                                }
+                                return;
+                            } else {
+                                waitForSocketConnection(socket,callback);
+                            }
+                        }, 5);
+                };
+
+              ws.onopen = function() {
+                  console.log("Connection is opened...");
+              };
+
+              ws.onclose = function() {
+                  console.log("Connection is closed...");
+              };
+
+              ws.onmessage = function (evt) {
+                var received_msg = JSON.parse(evt.data);
+                if (received_msg['header'] == 'networks constructed') {
+                    //plot_ontology(received_msg['ontology-network'])
+                    current_interactions_network = jQuery.extend(true, {}, received_msg['interactions-network'])
+                    plot_interactions_left(received_msg['interactions-network'])
+                    //plot_interactions_right(received_msg['interactions-network'])
+                    table.clear();
+                    table.rows.add(received_msg['proteins']).draw();
+                } else if (received_msg['header'] == 'network extended') {
+                  plot_interactions_left(received_msg['network'])
+                  //plot_interactions_right(received_msg['network'])
+                }
+              };
+
+              var highlight_parallel_coordinates = function(protein_id) {
+                  highlighted.each(function(d) {
+                    d3.select(this).style("display", "none");
+                  });
+                  foreground.each(function(d) {
+                    if (d['ID'] == protein_id) {
+                        highlighted.each(function(d2) {
+                            if (d2['ID'] == d['ID']) {
+                              d3.select(this).style("display", null);
+                            }
+                        });
+                    }
+                  });
+                  background.each(function(d) {
+                    if (d['ID'] == protein_id) {
+                        highlighted.each(function(d2) {
+                            if (d2['ID'] == d['ID']) {
+                              d3.select(this).style("display", null);
+                            }
+                        });
+                    }
+                  });
+                };
+
+              var highlight = function(protein_id) {
+                  highlight_parallel_coordinates(protein_id)
+                  ws.send(JSON.stringify({
+                      'header': 'extend network',
+                      'network': current_interactions_network,
+                      'protein_id': protein_id,
+                      'protein_ids_selected': protein_ids_selected
+                  }));
+              };
+
+              var plot_parallel_coordinates = function() {
+
+                  var margin = {top: 30, right: 10, bottom: 10, left: 10},
+                      width = $("#parallel").width() - margin.left - margin.right,
+                      height = width*aspect - margin.top - margin.bottom;
+
+                  var x = d3.scale.ordinal().rangePoints([0, width], 1),
+                      y = {},
+                      dragging = {};
+
+                  var line = d3.svg.line(),
+                      axis = d3.svg.axis().orient("left");
+
+                  var parallel_svg = d3.select("#parallel").append("svg")
+                      .attr("preserveAspectRatio", "xMinYMin meet")
+                      .attr("viewBox", "0 0 "+(width+margin.left+margin.right)+" "+(height+margin.top+margin.bottom))
+                      .append("g")
+                      .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
+
+                  d3.csv("{{  static_url('data/CTIP2_2.csv') }}", function(error, genes) {
+                    // Extract the list of dimensions and create a scale for each.
+                    x.domain(dimensions = d3.keys(genes[0]).filter(function(d) {
+                      return d != "ID" && (y[d] = d3.scale.linear()
+                          .domain(d3.extent(genes, function(p) { return +p[d]; }))
+                          .range([height, 0]));
+                    }));
+
+                    // Add grey background lines for context.
+                    background = parallel_svg.append("g")
+                        .attr("class", "background")
+                      .selectAll("path")
+                        .data(genes)
+                      .enter().append("path")
+                        .attr("d", path);
+
+                    // Add blue foreground lines for focus.
+                    foreground = parallel_svg.append("g")
+                        .attr("class", "foreground")
+                      .selectAll("path")
+                        .data(genes)
+                      .enter().append("path")
+                        .attr("d", path);
+
+                    highlighted = parallel_svg.append("g")
+                        .attr("class", "highlighted").selectAll("path")
+                          .data(genes)
+                        .enter().append("path")
+                          .attr("d", path).style("display", "none");
+
+                    // Add a group element for each dimension.
+                    var g = parallel_svg.selectAll(".dimension")
+                        .data(dimensions)
+                      .enter().append("g")
+                        .attr("class", "dimension")
+                        .attr("transform", function(d) { return "translate(" + x(d) + ")"; })
+                        .call(d3.behavior.drag()
+                          .origin(function(d) { return {x: x(d)}; })
+                          .on("dragstart", function(d) {
+                            dragging[d] = x(d);
+                            background.attr("visibility", "hidden");
+                          })
+                          .on("drag", function(d) {
+                            dragging[d] = Math.min(width, Math.max(0, d3.event.x));
+                            foreground.attr("d", path);
+                            dimensions.sort(function(a, b) { return position(a) - position(b); });
+                            x.domain(dimensions);
+                            g.attr("transform", function(d) { return "translate(" + position(d) + ")"; })
+                          })
+                          .on("dragend", function(d) {
+                            delete dragging[d];
+                            transition(d3.select(this)).attr("transform", "translate(" + x(d) + ")");
+                            transition(foreground).attr("d", path);
+                            background
+                                .attr("d", path)
+                              .transition()
+                                .delay(500)
+                                .duration(0)
+                                .attr("visibility", null);
+                          }));
+
+                    // Add an axis and title.
+                    g.append("g")
+                        .attr("class", "axis")
+                        .each(function(d) { d3.select(this).call(axis.scale(y[d])); })
+                      .append("text")
+                        .style("text-anchor", "middle")
+                        .attr("y", -9)
+                        .text(function(d) { return d; });
+
+                    // Add and store a brush for each axis.
+                    g.append("g")
+                        .attr("class", "brush")
+                        .each(function(d) {
+                          d3.select(this).call(y[d].brush = d3.svg.brush().y(y[d]).on("brushstart", brushstart).on("brush", brush).on("brushend", brushend));
+                        })
+                      .selectAll("rect")
+                        .attr("x", -8)
+                        .attr("width", 16);
+                  });
+
+                  function position(d) {
+                    var v = dragging[d];
+                    return v == null ? x(d) : v;
+                  }
+
+                  function transition(g) {
+                    return g.transition().duration(500);
+                  }
+
+                  // Returns the path for a given data point.
+                  function path(d) {
+                    return line(dimensions.map(function(p) { return [position(p), y[p](d[p])]; }));
+                  }
+
+                  function brushstart() {
+                    d3.event.sourceEvent.stopPropagation();
+                  }
+
+                  function brushend() {
+                    protein_ids_selected = [];
+                    foreground.each(function(d) {
+                      if (this.style.display != "none")
+                        protein_ids_selected.push(d['ID'])
+                    });
+                  }
+
+                  // Handles a brush event, toggling the display of foreground lines.
+                  function brush() {
+                    var actives = dimensions.filter(function(p) { return !y[p].brush.empty(); }),
+                        extents = actives.map(function(p) { return y[p].brush.extent(); });
+                    foreground.style("display", function(d) {
+                      return actives.every(function(p, i) {
+                        return extents[i][0] <= d[p] && d[p] <= extents[i][1];
+                      }) ? null : "none";
+                    });
+
+                  }
+                };
+
+              var plot_ontology = function(graph) {
+
+                  $("#ontology").empty();
+
+                  var width = $("#ontology").width(),
+                      height = width*aspect*2;
+
+                  var color = d3.scale.linear().domain([1,100])
+                            .interpolate(d3.interpolateHcl)
+                            .range([d3.rgb("#9ebcda"), d3.rgb('#6e016b')]);
+
+                  var force = d3.layout.force()
+                      .charge(-120)
+                      .linkDistance(30)
+                      .size([width, height]);
+
+                  var graph_svg = d3.select("#ontology").append("svg")
+                                    .attr("preserveAspectRatio", "xMinYMin meet")
+                                    .attr("viewBox", "0 0 "+width+" "+height);
+
+                      graph_svg.append("defs").selectAll("marker")
+                          .data(["suit", "licensing", "resolved"])
+                        .enter().append("marker")
+                          .attr("id", function(d) { return d; })
+                          .attr("viewBox", "0 -5 10 10")
+                          .attr("refX", 25)
+                          .attr("refY", 0)
+                          .attr("markerWidth", 6)
+                          .attr("markerHeight", 6)
+                          .attr("orient", "auto")
+                        .append("path")
+                          .attr("d", "M0,-5L10,0L0,5 L10,0 L0, -5")
+                          .style("stroke", "#4679BD")
+                          .style("opacity", "1");
+
+
+                  force
+                      .nodes(graph.nodes)
+                      .links(graph.links)
+                      .start();
+
+                  var link = graph_svg.selectAll(".link")
+                      .data(graph.links)
+                      .enter().append("line")
+                      .attr("class", "link")
+                      .style("marker-end",  "url(#suit)") // Modified line
+
+                  var node = graph_svg.selectAll(".node")
+                      .data(graph.nodes)
+                      .enter().append("circle")
+                      .attr("class", "node")
+                      .attr("r", function(d) { return 10; })
+                      .style("fill", function(d) { return color(d.counts); })
+                      .call(force.drag)
+                      .on('dblclick', connectedNodes);
+
+                  node.append("title")
+                      .text(function(d) { return d.name+' ['+d.counts+']'; });
+
+                  force.on("tick", function() {
+                    link.attr("x1", function(d) { return d.source.x; })
+                        .attr("y1", function(d) { return d.source.y; })
+                        .attr("x2", function(d) { return d.target.x; })
+                        .attr("y2", function(d) { return d.target.y; });
+
+                    node.attr("cx", function(d) { return d.x; })
+                        .attr("cy", function(d) { return d.y; });
+                  });
+
+                  //Toggle stores whether the highlighting is on
+                  var toggle = 0;
+                  //Create an array logging what is connected to what
+                  var linkedByIndex = {};
+                  for (i = 0; i < graph.nodes.length; i++) {
+                      linkedByIndex[i + "," + i] = 1;
+                  };
+                  graph.links.forEach(function (d) {
+                      linkedByIndex[d.source.index + "," + d.target.index] = 1;
+                  });
+                  //This function looks up whether a pair are neighbours
+                  function neighboring(a, b) {
+                      return linkedByIndex[a.index + "," + b.index];
+                  }
+                  function connectedNodes() {
+                      if (toggle == 0) {
+                          //Reduce the opacity of all but the neighbouring nodes
+                          d = d3.select(this).node().__data__;
+                          node.style("opacity", function (o) {
+                              return neighboring(d, o) | neighboring(o, d) ? 1 : 0.1;
+                          });
+                          link.style("opacity", function (o) {
+                              return d.index==o.source.index | d.index==o.target.index ? 1 : 0.1;
+                          });
+                          //Reduce the op
+                          toggle = 1;
+                      } else {
+                          //Put them back to opacity=1
+                          node.style("opacity", 1);
+                          link.style("opacity", 1);
+                          toggle = 0;
+                      }
+                  }
+              }
+
+              var plot_interactions_left = function(graph) {
+
+                  $("#interactions-left").empty();
+
+                  var width = $("#interactions-left").width(),
+                      height = width*aspect*2;
+
+                  var color = d3.scale.linear().domain([1,100])
+                            .interpolate(d3.interpolateHcl)
+                            .range([d3.rgb("#9ebcda"), d3.rgb('#6e016b')]);
+
+                  var force = d3.layout.force()
+                      .charge(-120)
+                      .linkDistance(30)
+                      .size([width, height]);
+
+                  var graph_svg = d3.select("#interactions-left").append("svg")
+                                    .attr("preserveAspectRatio", "xMinYMin meet")
+                                    .attr("viewBox", "0 0 "+width+" "+height);
+
+                      graph_svg.append("defs").selectAll("marker")
+                          .data(["suit", "licensing", "resolved"])
+                        .enter().append("marker")
+                          .attr("id", function(d) { return d; })
+                          .attr("viewBox", "0 -5 10 10")
+                          .attr("refX", 25)
+                          .attr("refY", 0)
+                          .attr("markerWidth", 6)
+                          .attr("markerHeight", 6)
+                          .attr("orient", "auto")
+                        .append("path")
+                          .attr("d", "M0,-5L10,0L0,5 L10,0 L0, -5")
+                          .style("stroke", "#4679BD")
+                          .style("opacity", "1");
+
+                  force
+                      .nodes(graph.nodes)
+                      .links(graph.links)
+                      .start();
+
+                  var link = graph_svg.selectAll(".link")
+                      .data(graph.links)
+                      .enter().append("line")
+                      .attr("class", "link");
+
+                  var node = graph_svg.selectAll(".node")
+                      .data(graph.nodes)
+                      .enter().append("circle")
+                      .attr("class", "node")
+                      .attr("r", function(d) { return 10; })
+                      .style("stroke-width", function(d) {
+                          if (d['core'])
+                              return 4;
+                          else
+                            return 1.5;
+                      })
+                      .style("stroke", 'black')
+                      .style("fill", function(d) {
+                        if (d['selection'])
+                            return 'red';
+                        else if (d['selected'])
+                            return 'steelblue';
+                        else if (d['core'])
+                            return 'darkgrey';
+                        else
+                          return 'lightgrey';
+                      })
+                      .call(force.drag)
+                      .on('dblclick', connectedNodes)
+                      .on('click', function(d) {
+                        highlight_parallel_coordinates(d['id'])
+                      });
+
+                  node.append("title")
+                      .text(function(d) { return d.id; });
+
+                  force.on("tick", function() {
+                    link.attr("x1", function(d) { return d.source.x; })
+                        .attr("y1", function(d) { return d.source.y; })
+                        .attr("x2", function(d) { return d.target.x; })
+                        .attr("y2", function(d) { return d.target.y; });
+
+                    node.attr("cx", function(d) { return d.x; })
+                        .attr("cy", function(d) { return d.y; });
+                  });
+
+                  //Toggle stores whether the highlighting is on
+                  var toggle = 0;
+                  //Create an array logging what is connected to what
+                  var linkedByIndex = {};
+                  for (i = 0; i < graph.nodes.length; i++) {
+                      linkedByIndex[i + "," + i] = 1;
+                  };
+                  graph.links.forEach(function (d) {
+                      linkedByIndex[d.source.index + "," + d.target.index] = 1;
+                  });
+                  //This function looks up whether a pair are neighbours
+                  function neighboring(a, b) {
+                      return linkedByIndex[a.index + "," + b.index];
+                  }
+                  function connectedNodes() {
+                      if (toggle == 0) {
+                          //Reduce the opacity of all but the neighbouring nodes
+                          d = d3.select(this).node().__data__;
+                          node.style("opacity", function (o) {
+                              return neighboring(d, o) | neighboring(o, d) ? 1 : 0.1;
+                          });
+                          link.style("opacity", function (o) {
+                              return d.index==o.source.index | d.index==o.target.index ? 1 : 0.1;
+                          });
+                          //Reduce the op
+                          toggle = 1;
+                      } else {
+                          //Put them back to opacity=1
+                          node.style("opacity", 1);
+                          link.style("opacity", 1);
+                          toggle = 0;
+                      }
+                  }
+              }
+
+              var plot_interactions_right = function(graph) {
+
+                  $("#interactions-right").empty();
+
+                  var width = $("#interactions-right").width(),
+                      height = width*aspect*2;
+
+                  var color = d3.scale.linear().domain([1,100])
+                            .interpolate(d3.interpolateHcl)
+                            .range([d3.rgb("#9ebcda"), d3.rgb('#6e016b')]);
+
+                  var force = d3.layout.force()
+                      .charge(-120)
+                      .linkDistance(30)
+                      .size([width, height]);
+
+                  var graph_svg = d3.select("#interactions-right").append("svg")
+                                    .attr("preserveAspectRatio", "xMinYMin meet")
+                                    .attr("viewBox", "0 0 "+width+" "+height);
+
+                      graph_svg.append("defs").selectAll("marker")
+                          .data(["suit", "licensing", "resolved"])
+                        .enter().append("marker")
+                          .attr("id", function(d) { return d; })
+                          .attr("viewBox", "0 -5 10 10")
+                          .attr("refX", 25)
+                          .attr("refY", 0)
+                          .attr("markerWidth", 6)
+                          .attr("markerHeight", 6)
+                          .attr("orient", "auto")
+                        .append("path")
+                          .attr("d", "M0,-5L10,0L0,5 L10,0 L0, -5")
+                          .style("stroke", "#4679BD")
+                          .style("opacity", "1");
+
+
+                  force
+                      .nodes(graph.nodes)
+                      .links(graph.links)
+                      .start();
+
+                  var link = graph_svg.selectAll(".link")
+                      .data(graph.links)
+                      .enter().append("line")
+                      .attr("class", "link");
+
+                  var node = graph_svg.selectAll(".node")
+                      .data(graph.nodes)
+                      .enter().append("circle")
+                      .attr("class", "node")
+                      .attr("r", function(d) { return 10; })
+                      .style("stroke-width", function(d) {
+                        if (d.type == 'core' || d.type == 'selection' || d.type == 'selected')
+                            return 2.5;
+                        else
+                            return 1.5;
+                      })
+                      .style("stroke", 'black')
+                      .style("fill", function(d) {
+                        if (d.type == 'selection')
+                            return 'red';
+                        else if (d.type == 'selected')
+                            return 'green';
+                        else if (d.type == 'new')
+                            return 'lightgrey';
+                        else
+                            return 'steelblue';
+                      })
+                      .call(force.drag)
+                      .on('dblclick', connectedNodes);
+
+                  node.append("title")
+                      .text(function(d) { return d.id; });
+
+                  force.on("tick", function() {
+                    link.attr("x1", function(d) { return d.source.x; })
+                        .attr("y1", function(d) { return d.source.y; })
+                        .attr("x2", function(d) { return d.target.x; })
+                        .attr("y2", function(d) { return d.target.y; });
+
+                    node.attr("cx", function(d) { return d.x; })
+                        .attr("cy", function(d) { return d.y; });
+                  });
+
+                  //Toggle stores whether the highlighting is on
+                  var toggle = 0;
+                  //Create an array logging what is connected to what
+                  var linkedByIndex = {};
+                  for (i = 0; i < graph.nodes.length; i++) {
+                      linkedByIndex[i + "," + i] = 1;
+                  };
+                  graph.links.forEach(function (d) {
+                      linkedByIndex[d.source.index + "," + d.target.index] = 1;
+                  });
+                  //This function looks up whether a pair are neighbours
+                  function neighboring(a, b) {
+                      return linkedByIndex[a.index + "," + b.index];
+                  }
+                  function connectedNodes() {
+                      if (toggle == 0) {
+                          //Reduce the opacity of all but the neighbouring nodes
+                          d = d3.select(this).node().__data__;
+                          node.style("opacity", function (o) {
+                              return neighboring(d, o) | neighboring(o, d) ? 1 : 0.1;
+                          });
+                          link.style("opacity", function (o) {
+                              return d.index==o.source.index | d.index==o.target.index ? 1 : 0.1;
+                          });
+                          //Reduce the op
+                          toggle = 1;
+                      } else {
+                          //Put them back to opacity=1
+                          node.style("opacity", 1);
+                          link.style("opacity", 1);
+                          toggle = 0;
+                      }
+                  }
+              }
+
+              $(function() {
+                waitForSocketConnection(ws, function() {
+
+                  table = $('#table').DataTable({
+                    "columnDefs": [
+                        /*{
+                            "render": function ( data, type, row ) {
+                                return data.join("<br/>");
+                            },
+                            "targets": 2
+                        },*/
+                        {
+                            "render": function ( data, type, row ) {
+                                return '<a href="http://www.uniprot.org/uniprot/'+data+'" target=_blank>'+data+'</a>&nbsp;<button type="button" class="btn btn-default btn-xs" id="'+data+'" onclick="highlight(\''+data+'\')"><span class="glyphicon glyphicon-search"></span></button>';
+                            },
+                            "targets": 0
+                        }
+                      ]
+                    });
+
+                  //the buttons to reconstruct the networks
+                  $('#construct-networks-with-core-interactions').click(function(e) {
+                    ws.send(JSON.stringify({
+                        'header': 'construct networks',
+                        'network type': network_type,
+                        'protein_ids': protein_ids_selected
+                    }));
+                  });
+
+                  //the buttons to select the type of ontology network
+                  $('#selectProcess').click(function(e) {
+                    if (network_type == 'molecular_function') {
+                      $('#selectFunction').removeClass('btn-warning').addClass('btn-success');
+                    }
+                    else if (network_type == 'cellular_component') {
+                      $('#selectComponent').removeClass('btn-warning').addClass('btn-success');
+                    }
+                    network_type = 'biological_process';
+                    $('#selectProcess').removeClass('btn-success').addClass('btn-warning');
+                  });
+                  $('#selectFunction').click(function(e) {
+                    if (network_type == 'biological_process') {
+                      $('#selectProcess').removeClass('btn-warning').addClass('btn-success');
+                    }
+                    else if (network_type == 'cellular_component') {
+                      $('#selectComponent').removeClass('btn-warning').addClass('btn-success');
+                    }
+                    network_type = 'molecular_function';
+                    $('#selectFunction').removeClass('btn-success').addClass('btn-warning');
+                  });
+                  $('#selectComponent').click(function(e) {
+                    if (network_type == 'biological_process') {
+                      $('#selectProcess').removeClass('btn-warning').addClass('btn-success');
+                    }
+                    else if (network_type == 'molecular_function') {
+                      $('#selectFunction').removeClass('btn-warning').addClass('btn-success');
+                    }
+                    network_type = 'cellular_component';
+                    $('#selectComponent').removeClass('btn-success').addClass('btn-warning');
+                  });
+
+                    //the first widget is drawn
+                    plot_parallel_coordinates();
+                });
+              });
+          } else {
+              console.log("WebSocket NOT supported by your Browser!");
+          }
+
+  </script>
+</body>
+</html>

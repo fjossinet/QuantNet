@@ -1,8 +1,8 @@
 {
-  "name": "CTIP2_DB",
+  "name": "quantnet",
   "version": "0.0.0",
   "homepage": "",
-  "description": "Collaboration project with the group of O. Rohr",
+  "description": "A webtool to go from Quantitative values to Networks (biological interactions, ontologies,...).",
   "authors": [
     "Fabrice Jossinet"
   ],

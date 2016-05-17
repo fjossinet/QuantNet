@@ -17,8 +17,8 @@ def find_protein_partners(network, protein_id):
     Search for protein partners in a Uniprot entry. Store this partner and the interaction in a network.
     """
     if not network.has_node(protein_id):
-        network.add_node(protein_id, id = protein_id)
-    print "Fetch http://www.uniprot.org/uniprot/%s.txt"%protein_id
+        network.add_node(protein_id)
+    print "get protein partners for protein %s"%protein_id
     try:
         response = urllib2.urlopen("http://www.uniprot.org/uniprot/%s.txt"%protein_id)
         content = str(response.read())
@@ -36,7 +36,7 @@ def find_protein_partners(network, protein_id):
                     continue
                 partner_id = line.split(':')[0]
                 if not network.has_node(partner_id):
-                    network.add_node(partner_id, id = protein_id)
+                    network.add_node(partner_id)
                     partner_ids.append(partner_id)
                 if not network.has_edge(protein_id, partner_id) and not network.has_edge(partner_id, protein_id): # the graph in directed, so we need to check both options
                     network.add_edge(protein_id, partner_id)
@@ -50,6 +50,7 @@ def get_details(protein_id):
     """
     Extract informations from a Uniprot entry
     """
+    print "get details for protein %s"%protein_id
     response = urllib2.urlopen("http://www.uniprot.org/uniprot/%s.txt"%protein_id)
     content = str(response.read())
     biological_process_go_terms = []
@@ -166,5 +167,5 @@ def reconstruct_ontology(obo_file, domain = 'biological_process'):
 if __name__ == '__main__':
     csv_file = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))+'/website/static/data/sample.csv'
     get_protein_details(csv_file)
-    reconstruct_ontologies()
+    #reconstruct_ontologies()
     reconstruct_interaction_network(csv_file)

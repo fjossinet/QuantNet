@@ -6,6 +6,9 @@ A webtool to go from Quantitative values to Networks (biological interactions, o
 You need to have Python installed on your computer with the following dependencies:
 
   * networkx
+  * tornado
+  * ujson
+  * pandas
 
 You need also to have the tool [bower](http://bower.io) installed on your computer.
 

@@ -1,7 +1,9 @@
 QuantNet
 ========
 
-A webtool to go from Quantitative values to Networks (biological interactions, ontologies,...).
+A Web tool to go from **Quant**itative values to biological **Net**works.
+
+![Screen capture](capture.png)
 
 You need to have Python installed on your computer with the following dependencies:
 
@@ -12,11 +14,15 @@ You need to have Python installed on your computer with the following dependenci
 
 You need also to have the tool [bower](http://bower.io) installed on your computer.
 
-Then go in the directory website/static and type:
+To install the Web server dependencies, from the directory website/static, type:
 
     bower install
 
-This project contains sample data to quickly see how the tool is working. From the QuantNet directory, type:
+This project contains sample data to quickly see how the tool is working. First you need to initialize these data. To do so type from the QuantNet directory;
+
+    ./scripts/init.py
+
+Once done (this can take a while), type:
 
     ./website/server.py
 

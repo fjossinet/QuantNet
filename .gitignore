@@ -1,1 +1,2 @@
 website/static/bower_components/*
+website/static/data/*.pickle
